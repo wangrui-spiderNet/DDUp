@@ -231,7 +231,7 @@ sqlite
 
 package com.android.clientApp;
 
-//客户端代码  关键代码 导包
+//客户端代码  关键代码 导包.java
 import com.example.android.testapp.aidl.IRequestCallBack;
 import com.example.android.testapp.aidl.IRequestCityWeather;
 import com.example.android.testapp.aidl.RequestData;
@@ -397,6 +397,652 @@ allDay);
             Log.e(TAG, "fx---->mCityWeatherManager null  end 6");
         }
     }
+
+}
+
+////////////////////////////////////////////////
+package com.huawei.android.totemweather.aidl;
+// 客户端代码 AIDL文件 文件路径必须和服务端一致.aidl
+import com.huawei.android.totemweather.aidl.RequestData;
+
+interface IRequestCallBack {
+    /** 
+      * @param weatherJsonData Return the form of JSON data 
+      * @param requestFlag 
+      */
+    void onRequestResult(String weatherJsonData, inout RequestData requestData);
+
+}
+/////////////////////////////////
+// 客户端代码 AIDL文件 文件路径必须和服务端一致
+package com.huawei.android.totemweather.aidl;
+
+import com.huawei.android.totemweather.aidl.IRequestCallBack;
+import com.huawei.android.totemweather.aidl.RequestData;
+
+interface IRequestCityWeather {
+
+    /** 
+      * request weather by the latitude and longitude,return the form of JSON data 
+      * @param requestData RequestData
+      * @return
+      */
+    void requestWeatherByLocation(in RequestData requestData);
+
+     /** 
+      * request the weather of cityInfo by the cityId from weather app.
+      * @param requestData RequestData
+      * @return 
+      */
+    void requestWeatherByCityId(in RequestData requestData);
+
+    /** 
+      * Get the weather of cityInfo by the cityType from weather app.
+      * @param requestData RequestData
+      * @return String Return the form of JSON data 
+      */
+    void getWeatherByType(in RequestData requestData);
+
+    void registerCallBack(IRequestCallBack callback, String packageName);
+    void unregisterCallBack(IRequestCallBack callback, String packageName);
+
+    void requestWeatherByLocationAndSourceType(in RequestData requestData, int type);
+
+    void requestWeatherWithLocation(in RequestData requestData, int sourceType, int parsePhaseType);
+}
+
+/////////////////////////////////
+// 客户端代码 AIDL文件 文件路径必须和服务端一致.aidl
+package com.huawei.android.totemweather.aidl;
+
+parcelable RequestData;
+
+///////////////////////////////////////
+
+// 客户端代码 AIDL文件 文件路径必须和服务端一致.java
+package com.example.android.testapp.aidl;
+
+import java.util.HashMap;
+
+import android.app.Service;
+import android.content.Context;
+import android.content.Intent;
+import android.os.AsyncTask;
+import android.os.IBinder;
+import android.os.RemoteException;
+import android.text.TextUtils;
+import android.util.Log;
+
+import com.example.android.testapp.controller.WeatherDataManager;
+import com.example.android.testapp.controller.WeatherTaskController;
+import com.example.android.testapp.controller.WeatherTaskInfo;
+import com.example.android.testapp.location.HwLocationManager;
+import com.example.android.testapp.location.HwLocationManager.LocationResult;
+import com.example.android.testapp.location.TotemLocation;
+import com.example.android.testapp.provider.BaseInfoUtils;
+import com.example.android.testapp.provider.CityInfo;
+import com.example.android.testapp.provider.Weather.WeatherInfo;
+import com.example.android.testapp.provider.WeatherAlarm;
+import com.example.android.testapp.utils.HomeCityWeather;
+import com.example.android.testapp.utils.HwLog;
+import com.example.android.testapp.utils.Utils;
+
+public class WeatherAidlService extends Service {
+
+    public static final String TAG = "WeatherAidlService";
+    /** parse error result */
+    public static final String PARSE_ERROR_RESULT = "";
+    /** request result */
+    public static final String REQUEST_RESULT = "request_result";
+    /** request data */
+    public static final String REQUEST_DATA = "request_data";
+
+    private static final String THIRD_REQUEST_PERMISSION = "com.example.testapp.permission.THIRD_REQUEST_WEATHER";
+
+    /** all application of register callback */
+    public final HashMap<String, IRequestCallBack> mCallbackList = new HashMap<String, IRequestCallBack>();
+    private WeatherDataManager mWeatherDataManager;
+
+    @Override
+    public void onCreate() {
+        HwLog.d(TAG, "onCreate");
+        mWeatherDataManager = WeatherDataManager.getInstance(this);
+        Log.e(TAG, "fx---->WeatherAidlService onCreate");
+        super.onCreate();
+    }
+
+    @Override
+    public IBinder onBind(Intent intent) {
+        HwLog.d(TAG, "onBind");     Log.e(TAG, "fx---->WeatherAidlService onBind");
+        return mCityWeatherManager;
+    }
+
+    @Override
+    public void onDestroy() {
+        HwLog.d(TAG, "onDestroy");
+        Log.e(TAG, "fx---->WeatherAidlService onDestroy");
+        mCallbackList.clear();
+        super.onDestroy();
+    }
+
+    public IRequestCityWeather.Stub mCityWeatherManager = new IRequestCityWeather.Stub() {
+
+        @Override
+        public void requestWeatherByLocation(RequestData requestData) throws RemoteException {
+//            enforceCallingOrSelfPermission(THIRD_REQUEST_PERMISSION, null);
+            HwLog.d(TAG, "requestWeatherByLocation->enter");
+            Log.e(TAG, "fx---->WeatherAidlService requestWeatherByLocation  requestData =="+requestData.toString());
+            Log.e(TAG, "fx---->WeatherAidlService isRequestDataWithGeoPosInValidate::: "+isRequestDataWithGeoPosInValidate(requestData));
+            if (isRequestDataWithGeoPosInValidate(requestData)) {
+                HwLog.w(TAG, "requestWeatherByLocation->requestData with geo-position is invalidate");
+                sendParseResult(requestData, PARSE_ERROR_RESULT);
+                return;
+            }
+
+            WeatherAsyncTask task = new WeatherAsyncTask(requestData);
+            Log.e(TAG, "fx---->WeatherAidlService task:: "+task.toString());
+            task.execute(createWeatherTaskInfoBasedOnRequest(requestData));
+        }
+
+        @Override
+        public void requestWeatherByCityId(RequestData requestData) throws RemoteException {
+//            enforceCallingOrSelfPermission(THIRD_REQUEST_PERMISSION, null);
+            HwLog.d(TAG, "requestByCityId requestData = " + requestData);
+            Log.e(TAG, "fx---->WeatherAidlService requestWeatherByCityId"+requestData.toString());
+            if (null == requestData || TextUtils.isEmpty(requestData.getmCityId())
+                    || !requestData.getmCityId().startsWith("cityId:")) {
+                HwLog.w(TAG, "requestByCityId Exception : data=" + requestData);
+                sendParseResult(requestData, PARSE_ERROR_RESULT);
+                return;
+            }
+            CityInfo cityInfo = new CityInfo();
+            BaseInfoUtils.setCityCode(cityInfo, requestData.getmCityId());
+            WeatherTaskInfo info = new WeatherTaskInfo(cityInfo);
+            //Log.i(TAG, " info " + info );/for test
+            info.setTaskState(WeatherTaskInfo.WEATHER_TASK_INIT);
+            WeatherAsyncTask task = new WeatherAsyncTask(requestData);
+            task.execute(info);
+        }
+
+        @Override
+        public void getWeatherByType(RequestData requestData) throws RemoteException {
+//            enforceCallingOrSelfPermission(THIRD_REQUEST_PERMISSION, null);
+            HwLog.d(TAG, "requestByType requestData = " + requestData);
+            Log.e(TAG, "fx---->WeatherAidlService getWeatherByType"+requestData.toString());
+            if (null == requestData) {
+                HwLog.d(TAG, "getWeatherByType requestData = null");
+                requestData = new RequestData();
+            }
+            CityInfo cityInfo = null;
+            WeatherInfo weatherInfo = null;
+            switch (requestData.getmCityType()) {
+            case RequestData.TYPE_MY_LOCATION:
+                // request my location weather if exist
+                cityInfo = queryLocationCityInfo();
+                break;
+            case RequestData.TYPE_HOME_CITY:
+                // default home city
+                cityInfo = Utils.getWidgetShowCityInfo(WeatherAidlService.this);
+                    break;
+            case RequestData.TYPE_HOME_CITY_FIRST:
+                    // first return home city, return my location if home city not exists
+                cityInfo = getHomeCityOrMyLocation();
+                break;
+            case RequestData.TYPE_MY_LOCATION_FIRST:
+                // first return my location, return home city if my location not exists
+                cityInfo = getMyLocationOrHomeCity();
+                break;
+            default:
+                break;
+            }
+
+            if (null != cityInfo) {
+                weatherInfo = queryWeatherInfo(cityInfo);
+            }
+            String jsonDataString = HomeCityWeather.packJsonData(WeatherAidlService.this, cityInfo,
+                    weatherInfo, requestData.ismAllDay(), true, true);
+            Log.e(TAG, "fx---->WeatherAidlService sendParseResult"+jsonDataString.toString());
+            sendParseResult(requestData, jsonDataString);
+        }
+
+        @Override
+        public void registerCallBack(IRequestCallBack callback, String packageName)
+                throws RemoteException {
+//            enforceCallingOrSelfPermission(THIRD_REQUEST_PERMISSION, null);
+            if (null != callback && !mCallbackList.containsKey(packageName)) {
+                HwLog.d(TAG, "Register packageName = " + packageName);
+                Log.e(TAG, "fx---->WeatherAidlService Register packageName = " + packageName);
+                mCallbackList.put(packageName, callback);
+            }
+        }
+
+        @Override
+        public void unregisterCallBack(IRequestCallBack callback, String packageName)
+                throws RemoteException {
+//            enforceCallingOrSelfPermission(THIRD_REQUEST_PERMISSION, null);
+            if (null != callback && mCallbackList.containsKey(packageName)) {
+                HwLog.d(TAG, "Unregister packageName = " + packageName);
+                Log.e(TAG, "fx---->WeatherAidlService Register unregisterCallBack = " + packageName);
+                mCallbackList.remove(packageName);
+            }
+        }
+
+        @Override
+        public void requestWeatherByLocationAndSourceType(
+                RequestData requestData, int type) throws RemoteException {
+//            enforceCallingOrSelfPermission(THIRD_REQUEST_PERMISSION, null);
+            HwLog.d(TAG, "requestWeatherByLocationAndSourceType->data source type:" + type);
+            if(isRequestDataWithGeoPosInValidate(requestData)) {
+                HwLog.w(TAG, "requestWeatherByLocationAndSourceType->request data is invalidate");
+                sendParseResult(requestData, PARSE_ERROR_RESULT);
+                return;
+            }
+            WeatherAsyncTask task = new WeatherWithDadaSourceTypeAsyncTask(requestData, type);
+            task.execute(createWeatherTaskInfoBasedOnRequest(requestData));
+        }
+
+        @Override
+        public void requestWeatherWithLocation(RequestData requestData, int sourceType,
+                int parsePhaseType) throws RemoteException {
+//            enforceCallingOrSelfPermission(THIRD_REQUEST_PERMISSION, null);
+            HwLog.d(TAG, "requestWeather->data source type:" + sourceType +
+                    ", parsePhaseType:" + parsePhaseType);
+            if(isRequestDataWithGeoPosInValidate(requestData)) {
+                HwLog.w(TAG, "requestWeatherByLocationAndSourceType->request data is invalidate");
+                sendParseResult(requestData, PARSE_ERROR_RESULT);
+                return;
+            }
+            WeatherAsyncTask task = new WeatherWithSourceAndPhaseTypeAsyncTask(
+                    requestData, sourceType, parsePhaseType);
+            task.execute(createWeatherTaskInfoBasedOnRequest(requestData));
+        }
+    };
+
+    private boolean isRequestDataWithGeoPosInValidate(RequestData requestData) {
+        return requestData == null || !TotemLocation.isValidLocaiton(
+                    requestData.getmLongitude(), requestData.getmLatitude());
+    }
+
+    private boolean isRequestMyPosWeather(RequestData requestData) {
+        final float MAX_DIFFER = 0.01f;
+        LocationResult curPos = HwLocationManager.getInstance().getResult();
+        if(null == curPos) {
+            HwLog.d(TAG, "isRequestMyPosWeather->there is no my position");//TODO:add radar
+            return false;
+        }
+        return Math.abs(curPos.mLat - requestData.getmLatitude()) < MAX_DIFFER
+                && Math.abs(curPos.mLon - requestData.getmLongitude()) < MAX_DIFFER;
+    }
+
+    private class WeatherWithSourceAndPhaseTypeAsyncTask extends
+            WeatherWithDadaSourceTypeAsyncTask {
+        protected int mParsePhaseType;
+        public WeatherWithSourceAndPhaseTypeAsyncTask(RequestData requestData,
+                int dataSourceType, int parsePhaseType) {
+            super(requestData, dataSourceType);
+            mParsePhaseType = parsePhaseType;
+        }
+
+        @Override
+        protected WeatherInfo parseWeatherFromNetwork(WeatherTaskInfo taskInfo) {
+            return WeatherTaskController.getInstance(
+                    WeatherAidlService.this).handleTaskImpl(
+                        taskInfo, mDataSourceType, mParsePhaseType);
+        }
+    }
+
+    private class WeatherWithDadaSourceTypeAsyncTask extends WeatherAsyncTask {
+
+        protected int mDataSourceType;
+
+        public WeatherWithDadaSourceTypeAsyncTask(RequestData requestData, int dataSourceType) {
+            super(requestData);
+            mDataSourceType = dataSourceType;
+        }
+
+        @Override
+        protected WeatherInfo parseWeatherInfo(WeatherTaskInfo taskInfo) {
+            WeatherInfo weather = tryToReturnWeatherInfoInDatabase();
+            return weather != null ? weather: parseWeatherFromNetwork(taskInfo);
+        }
+
+        protected WeatherInfo parseWeatherFromNetwork(WeatherTaskInfo taskInfo) {
+            return WeatherTaskController.getInstance(
+                    WeatherAidlService.this).handleTaskImpl(taskInfo, mDataSourceType);
+        }
+
+        protected WeatherInfo tryToReturnWeatherInfoInDatabase() {
+            //return database weather if the specified datasource type is
+            //the same with current type
+            if(Utils.getCurrentDataSourceType(WeatherAidlService.this) == mDataSourceType
+                    && isRequestMyPosWeather(mRequestData)) {
+                CityInfo myCityInfo = queryLocationCityInfo();
+                WeatherInfo weather = queryWeatherInfo(myCityInfo);
+                final long OUTDATE_TIME = 3600000;//1 hour
+                if(System.currentTimeMillis() - weather.mTime < OUTDATE_TIME) {
+                    HwLog.d(TAG, "parseWeatherInfo->return weather from database");
+                    return weather;
+                }
+            }
+            return null;
+        }
+    }
+
+    private class WeatherAsyncTask extends AsyncTask<WeatherTaskInfo, WeatherTaskInfo, String>{
+        protected RequestData mRequestData;
+
+        public WeatherAsyncTask(RequestData requestData){
+            mRequestData = requestData;
+        }
+
+        protected boolean isTaskInfoParamsInValidate(WeatherTaskInfo[] taskInfos) {
+            return null == taskInfos || taskInfos.length < 1;
+        }
+
+        protected WeatherInfo parseWeatherInfo(WeatherTaskInfo taskInfo) {
+            return WeatherTaskController.getInstance(WeatherAidlService.this)
+                    .handleTaskImpl(taskInfo);
+        }
+
+        @Override
+        protected String doInBackground(WeatherTaskInfo... taskInfos) {
+            
+            Log.e(TAG, "fx----> WeatherAidlService taskInfos : "+taskInfos.toString());
+            Log.e(TAG, "fx----> WeatherAidlService isTaskInfoParamsInValidate : "+isTaskInfoParamsInValidate(taskInfos));
+            if(isTaskInfoParamsInValidate(taskInfos)){
+                HwLog.w(TAG, "WeatherAsyncTask->doInBackground->taskInfos invalidate");
+                return null;
+            }
+            Log.e(TAG, "fx----> WeatherAidlService taskInfo : "+taskInfos[0].toString());
+            WeatherInfo weatherInfo = parseWeatherInfo(taskInfos[0]);
+            Log.e(TAG, "fx----> WeatherAidlService weatherInfo : "+weatherInfo.toString());
+            if (null == weatherInfo) {
+                Log.e(TAG, "fx----> WeatherAidlService weatherInfo is null ");
+                HwLog.w(TAG, "WeatherAsyncTask->doInBackground->weatherInfo is null");
+                return null;
+            }
+
+            final CityInfo cityInfo = new CityInfo();
+            //Log.i(TAG, "weatherInfo = " + weatherInfo);/for test
+            cityInfo.updateCityInfo(WeatherAidlService.this,weatherInfo);
+            Utils.dealCityInfoWeatherInfo(WeatherAidlService.this, cityInfo, weatherInfo);
+            BaseInfoUtils.setWeatherId(weatherInfo, BaseInfoUtils.getWeatherId(cityInfo));
+
+            BaseInfoUtils.setWeatherStatus(weatherInfo, WeatherInfo.STATUS_DATA_OK);
+            if (null != weatherInfo.mWeatherAlarms &&
+                    weatherInfo.mWeatherAlarms.size() >= WeatherAlarm.SECOND_ALARM) {
+                WeatherAlarm.sort(weatherInfo.mWeatherAlarms);
+            }
+
+            Log.e(TAG, "fx----> WeatherAidlService return : "+HomeCityWeather.packJsonData(WeatherAidlService.this, cityInfo,
+                    weatherInfo.clone(), mRequestData.ismAllDay(), true, false));
+            
+            return HomeCityWeather.packJsonData(WeatherAidlService.this, cityInfo,
+                    weatherInfo.clone(), mRequestData.ismAllDay(), true, false);
+        }
+
+        @Override
+        protected void onPostExecute(String result) {
+            Log.e(TAG, "fx---->WeatherAidlService task onPostExecute:: "+result);
+            if(TextUtils.isEmpty(result)) {
+                result = PARSE_ERROR_RESULT;
+                HwLog.w(TAG, "onPostExecute->parse result is empty");
+                Log.e(TAG, "fx---->WeatherAidlService task ->parse result is empty ");
+            }
+            sendParseResult(mRequestData, result);
+        }
+    }
+
+    private WeatherTaskInfo createWeatherTaskInfoBasedOnRequest(
+            RequestData requestData) {
+        CityInfo cityInfo = new CityInfo(CityInfo.CITY_TYPE_MY_LOCATION);
+        WeatherTaskInfo info = new WeatherTaskInfo(cityInfo);
+        info.setGeoPosition(requestData.getmLongitude(), requestData.getmLatitude());
+        info.setTaskState(WeatherTaskInfo.WEATHER_TASK_LOCATIED_SUCCESS);
+        info.indicateToOutSideLocateTask();
+        Log.e(TAG, "fx----> WeatherTaskInfo:"+info.toString());
+        return info;
+    }
+
+    private void sendParseResult(RequestData requestData, String parseResult) {
+        Log.e(TAG, "fx----> WeatherAidlService parseResult :" +parseResult);
+        if (null == requestData) {
+            Log.e(TAG, "fx---->WeatherAidlService requestData == null");
+            HwLog.d(TAG, "sendParseResult requestData = null");
+            requestData = new RequestData();
+        }
+
+        if (mCallbackList.containsKey(requestData.getmPackageName())) {
+            try {
+                HwLog.d(TAG, "onRequestResult");
+                Log.e(TAG, "fx---->WeatherAidlService getmPackageName 2 :" +requestData.getmPackageName());
+                IRequestCallBack callBack = mCallbackList.get(requestData.getmPackageName());
+                Log.e(TAG, "fx---->WeatherAidlService parseResult 2 :" +parseResult);
+                callBack.onRequestResult(parseResult, requestData);
+                
+            } catch (RemoteException e) {
+                HwLog.e(TAG, "RemoteException >> " + e);
+                Log.e(TAG, "fx---->WeatherAidlService RemoteException " + e);
+            }
+        }else {
+            Log.e(TAG, "fx---->WeatherAidlService mCallbackList :" +mCallbackList.toString());
+            Log.e(TAG, "fx---->WeatherAidlService requestData.getmPackageName() :" +requestData.getmPackageName());
+        }
+    }
+
+    protected CityInfo queryLocationCityInfo(){
+        return mWeatherDataManager.queryLocationCityInfo();
+    }
+
+    protected WeatherInfo queryWeatherInfo(CityInfo cityInfo){
+        return mWeatherDataManager.queryWeatherInfo( cityInfo);
+    }
+
+    private CityInfo getHomeCityOrMyLocation(){
+        CityInfo cityInfo = mWeatherDataManager.queryHomeCityInfo();
+        if(null == cityInfo){
+            cityInfo = mWeatherDataManager.queryLocationCityInfo();
+        }
+        return cityInfo;
+    }
+
+    private CityInfo getMyLocationOrHomeCity(){
+        return mWeatherDataManager.queryDefaultCityInfo();
+    }
+}
+
+/////////////////////////////////////////////////
+// 客户端代码 AIDL文件 文件路径必须和服务端一致 .java
+package com.huawei.android.totemweather.aidl;
+
+import android.content.Context;
+import android.os.Parcel;
+import android.os.Parcelable;
+
+public class RequestData implements Parcelable {
+
+    /** application package name */
+    private String mPackageName;
+    /** request flag */
+    private String mRequesetFlag;
+    /** form : beijing -> "cityId:101010100" , New York -> "cityId:USNY0996" */
+    private String mCityId;
+    /** location latitude */
+    private double mLatitude;
+    /** location longitude */
+    private double mLongitude;
+    /**
+     * request city weather type. see {@link #TYPE_MY_LOCATION} and
+     * {@link #TYPE_HOME_CITY}
+     */
+    private int mCityType = TYPE_HOME_CITY;
+    /** all future forecast weather, or one day weather */
+    private boolean mAllDay = true;
+
+    /** my location city type */
+    public static final int TYPE_MY_LOCATION = 1;
+    /** home city type */
+    public static final int TYPE_HOME_CITY = 2;
+    /**
+     * first return home city, return my location if home city not exists
+     */
+    public static final int TYPE_HOME_CITY_FIRST = 3;
+    /**
+     * first return my location, return home city if my location not exists
+     */
+    public static final int TYPE_MY_LOCATION_FIRST = 4;
+    public RequestData() {
+    }
+
+    public RequestData(Parcel in) {
+        readFromParcel(in);
+    }
+
+    /**
+     * use this constructor when you use
+     * {@link com.huawei.android.totemweather.aidl.IRequestCityWeather#requestWeatherByLocation(RequestData)}
+     *
+     * @param context Context
+     * @param latitude location latitude
+     * @param longitude location longitude
+     */
+    public RequestData(Context context, double latitude, double longitude) {
+        mPackageName = context.getPackageName();
+        mRequesetFlag = latitude + "," + longitude;
+        mLatitude = latitude;
+        mLongitude = longitude;
+
+    }
+
+    /**
+     * use this constructor when you use
+     * {@link com.huawei.android.totemweather.aidl.IRequestCityWeather#requestWeatherByCityId(RequestData)}
+     *
+     * @param context Context
+     * @param cityId form : beiJing -> "cityId:101010100" , New York ->
+     *            "cityId:USNY0996"
+     */
+    public RequestData(Context context, String cityId) {
+        mPackageName = context.getPackageName();
+        mRequesetFlag = cityId;
+        mCityId = cityId;
+    }
+
+    /**
+     * use this constructor when you use
+     * {@link com.huawei.android.totemweather.aidl.IRequestCityWeather#getWeatherByType(RequestData)}
+     *
+     * @param context
+     *            Context
+     * @param cityType request city weather type. see {@link #TYPE_MY_LOCATION} and {@link #TYPE_HOME_CITY}
+     */
+    public RequestData(Context context, int cityType) {
+        mPackageName = context.getPackageName();
+        mRequesetFlag = cityType + "";
+        mCityType = cityType;
+    }
+
+    public String getmPackageName() {
+        return mPackageName;
+    }
+
+    public void setmPackageName(String mPackageName) {
+        this.mPackageName = mPackageName;
+    }
+
+    public String getmRequesetFlag() {
+        return mRequesetFlag;
+    }
+
+    public void setmRequesetFlag(String mRequesetFlag) {
+        this.mRequesetFlag = mRequesetFlag;
+    }
+
+    public String getmCityId() {
+        return mCityId;
+    }
+
+    public void setmCityId(String mCityId) {
+        this.mCityId = mCityId;
+    }
+
+    public double getmLatitude() {
+        return mLatitude;
+    }
+
+    public void setmLatitude(double mLatitude) {
+        this.mLatitude = mLatitude;
+    }
+
+    public double getmLongitude() {
+        return mLongitude;
+    }
+
+    public void setmLongitude(double mLongitude) {
+        this.mLongitude = mLongitude;
+    }
+
+    public int getmCityType() {
+        return mCityType;
+    }
+
+    public void setmCityType(int mCityType) {
+        this.mCityType = mCityType;
+    }
+
+    public boolean ismAllDay() {
+        return mAllDay;
+    }
+
+    public void setmAllDay(boolean mAllDay) {
+        this.mAllDay = mAllDay;
+    }
+
+    @Override
+    public int describeContents() {
+        return 0;
+    }
+
+    public void readFromParcel(Parcel in) {
+        mPackageName = in.readString();
+        mRequesetFlag = in.readString();
+        mCityId = in.readString();
+        mLatitude = in.readDouble();
+        mLongitude = in.readDouble();
+        mCityType = in.readInt();
+        mAllDay = in.readInt() == 1;
+
+    }
+
+    @Override
+    public void writeToParcel(Parcel dest, int flags) {
+        dest.writeString(mPackageName);
+        dest.writeString(mRequesetFlag);
+        dest.writeString(mCityId);
+        dest.writeDouble(mLatitude);
+        dest.writeDouble(mLongitude);
+        dest.writeInt(mCityType);
+        dest.writeInt(mAllDay ? 1 : 0);
+    }
+
+    public static final Parcelable.Creator<RequestData> CREATOR = new Parcelable.Creator<RequestData>() {
+        public RequestData createFromParcel(Parcel p) {
+            return new RequestData(p);
+        }
+
+        public RequestData[] newArray(int size) {
+            return new RequestData[size];
+        }
+    };
+
+    @Override
+    public String toString() {
+        return "RequestData [mPackageName=" + mPackageName + ", mRequesetFlag="
+                + mRequesetFlag + ", mCityId=" + mCityId + ", mCityType="
+                + mCityType + ", mAllDay=" + mAllDay + "]";
+    }
+
+
 
 }
 
