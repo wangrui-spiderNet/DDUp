@@ -459,7 +459,7 @@ parcelable RequestData;
 
 ///////////////////////////////////////
 
-// 客户端、服务器端代码 AIDL文件 文件路径必须和服务端一致.java
+// 服务器端代码 AIDL文件 文件路径必须和服务端一致.java
 package com.example.android.testapp.aidl;
 
 import java.util.HashMap;
