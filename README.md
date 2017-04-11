@@ -402,7 +402,7 @@ allDay);
 
 ////////////////////////////////////////////////
 package com.huawei.android.totemweather.aidl;
-// 客户端代码 AIDL文件 文件路径必须和服务端一致.aidl
+// 客户端/服务器端代码 AIDL文件 文件路径必须和服务端一致.aidl
 import com.huawei.android.totemweather.aidl.RequestData;
 
 interface IRequestCallBack {
@@ -414,7 +414,7 @@ interface IRequestCallBack {
 
 }
 /////////////////////////////////
-// 客户端代码 AIDL文件 文件路径必须和服务端一致
+// 客户端/服务器端代码 AIDL文件 文件路径必须和服务端一致.aidl
 package com.huawei.android.totemweather.aidl;
 
 import com.huawei.android.totemweather.aidl.IRequestCallBack;
@@ -452,14 +452,14 @@ interface IRequestCityWeather {
 }
 
 /////////////////////////////////
-// 客户端代码 AIDL文件 文件路径必须和服务端一致.aidl
+// 客户端/服务器端代码 AIDL文件 文件路径必须和服务端一致.aidl
 package com.huawei.android.totemweather.aidl;
 
 parcelable RequestData;
 
 ///////////////////////////////////////
 
-// 客户端代码 AIDL文件 文件路径必须和服务端一致.java
+// 客户端、服务器端代码 AIDL文件 文件路径必须和服务端一致.java
 package com.example.android.testapp.aidl;
 
 import java.util.HashMap;
@@ -1070,6 +1070,51 @@ public class RequestData implements Parcelable {
         android:taskAffinity="android.task.clientApp" >
         
        
+    </application>
+
+</manifest>
+
+/////////////////////////////////////////////////////////////
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    package="com.example.android.testapp"
+    android:versionCode="610011"
+    android:versionName="6.1.11" >
+    
+	<!-- 关键代码 permission标签都是自定义权限 android:protectionLevel="signatureOrSystem"是安全等级-->
+    <permission
+        android:name="com.example.testapp.permission.THIRD_REQUEST_WEATHER"
+        android:protectionLevel="signatureOrSystem" />
+    <permission
+        android:name="com.example.android.testapp.permission.ACCESS_WEATHERCLOCK_PROVIDER"
+        android:protectionLevel="signatureOrSystem" />
+    <uses-permission android:name="com.example.testapp.permission.THIRD_REQUEST_WEATHER" />
+  
+    <application
+        android:name="TestApp"
+        android:allowBackup="false"
+        android:defaultToDeviceProtectedStorage="true"
+        android:directBootAware="true"
+        android:hardwareAccelerated="false"
+        android:icon="@drawable/ic_launcher_icon"
+        android:label="@string/app_name_a"
+        android:supportsRtl="true"
+        android:theme="@android:style/Theme.Holo.Light" >
+        
+
+       <!-- 关键代码  带了自定义权限的service，意味着第三方APP在访问此service的时候需要在manifest里面注册相同的权限-->
+        <service
+            android:name=".aidl.WeatherAidlService"
+            android:enabled="true" 
+            android:exported="true" 
+            android:permission="com.example.android.testapp.permission.ACCESS_WEATHERCLOCK_PROVIDER"
+            >
+            <intent-filter>
+                <action android:name="com.example.testapp.action.THIRD_REQUEST_WEATHER" />
+            </intent-filter>
+        </service>
+
+      
     </application>
 
 </manifest>
